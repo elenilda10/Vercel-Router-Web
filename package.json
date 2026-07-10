@@ -1,0 +1,6 @@
+{
+  "name": "proxy-download",
+  "version": "1.0.0",
+  "description": "Proxy para download de audio",
+  "main": "api/proxy.js"
+}
