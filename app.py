@@ -1,4 +1,4 @@
-# Ficheiro: app.py | Motor Próprio com TLS Chrome + Raio-X Anti-Silêncio
+# Ficheiro: app.py | Motor Próprio com TLS Chrome (Bug do ImpersonateTarget Corrigido!)
 
 from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
 from fastapi.responses import JSONResponse, FileResponse
@@ -7,6 +7,10 @@ import yt_dlp
 import os
 import glob
 import traceback
+
+# 🛡️ A CORREÇÃO DO ERRO ASSERTIONERROR:
+# Importamos o objeto oficial que o yt-dlp exige para fazer a camuflagem TLS!
+from yt_dlp.networking.impersonate import ImpersonateTarget
 
 app = FastAPI(title="Krust Audio API - Anti-Bot Shield")
 
@@ -37,7 +41,7 @@ def home():
 
     return {
         "status": "online",
-        "versao_deploy": "RAIO-X ATIVO 2.0 (Se vir isto, o Render atualizou!)",
+        "versao_deploy": "TLS BLINDADO 3.0 (Objeto ImpersonateTarget Corrigido)",
         "motor_tls_cffi": status_cffi,
         "blindagem": "TLS Fingerprinting (impersonate: chrome)",
         "plataformas_clientes": "tv_embedded, android, ios, web",
@@ -66,7 +70,10 @@ def extrair_e_manipular(
         'no_warnings': True,
         'noplaylist': True,
         'writethumbnail': True,
-        'impersonate': 'chrome',
+        
+        # 🛡️ A MÁGICA: Passamos o objeto compilado que o Python exige!
+        'impersonate': ImpersonateTarget.from_str('chrome'),
+        
         'extractor_args': {
             'youtube': {
                 'player_client': ['tv_embedded', 'android', 'ios', 'tv', 'web'],
@@ -112,7 +119,6 @@ def extrair_e_manipular(
         erro_completo = traceback.format_exc()
         print(f"❌ Falha capturada no terminal:\n{erro_completo}")
         
-        # O USO DO REPR(E) OBRIGA O PYTHON A ESCREVER O NOME DA CLASSE DO ERRO!
         return JSONResponse(
             status_code=500,
             content={
@@ -120,6 +126,6 @@ def extrair_e_manipular(
                 "nome_exato_do_erro": repr(e), 
                 "resumo_do_erro": str(e),
                 "raio_x_detalhado": erro_completo.split("\n")[-6:], 
-                "dica_tecnica": "A chave nome_exato_do_erro acima mostra a causa raiz sem ficar em branco."
+                "dica_tecnica": "Verifique o erro acima no caso de falha de conexão."
             }
         )
