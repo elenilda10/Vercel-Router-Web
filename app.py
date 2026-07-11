@@ -1,4 +1,4 @@
-# Ficheiro: app.py | Motor Próprio com TLS Impersonation (Burlou a AWS/Render!)
+# Ficheiro: app.py | Motor Próprio com TLS Chrome + Raio-X Anti-Silêncio
 
 from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
 from fastapi.responses import JSONResponse, FileResponse
@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import yt_dlp
 import os
 import glob
+import traceback
 
 app = FastAPI(title="Krust Audio API - Anti-Bot Shield")
 
@@ -28,10 +29,18 @@ def limpar_ficheiros_temporarios(caminho_base: str):
 
 @app.get("/")
 def home():
+    try:
+        import curl_cffi
+        status_cffi = f"✅ Instalado perfeitamente (Versão {curl_cffi.__version__})"
+    except ImportError as err:
+        status_cffi = f"❌ NÃO INSTALADO. Motivo real: {repr(err)}"
+
     return {
         "status": "online",
-        "blindagem": "TLS Fingerprinting ativado (impersonate: chrome)",
-        "plataformas_clientes": "Android, iOS, TV, Web",
+        "versao_deploy": "RAIO-X ATIVO 2.0 (Se vir isto, o Render atualizou!)",
+        "motor_tls_cffi": status_cffi,
+        "blindagem": "TLS Fingerprinting (impersonate: chrome)",
+        "plataformas_clientes": "tv_embedded, android, ios, web",
         "mensagem": "API Própria de Manipulação de Áudio a correr no Render! 🚀"
     }
 
@@ -44,36 +53,26 @@ def extrair_e_manipular(
     if not url:
         raise HTTPException(status_code=400, detail="URL não fornecida.")
 
-    # Limpeza de parâmetros de rastreamento do link
     url_limpa = url.split("?si=")[0].split("&si=")[0].split("?is=")[0].strip()
 
     pasta_tmp = "/tmp/downloads"
     os.makedirs(pasta_tmp, exist_ok=True)
     output_template = f"{pasta_tmp}/%(id)s.%(ext)s"
 
-    # 🛡️ O SETUP PERFEITO (Baseado na sua pesquisa do repositório oficial):
     ydl_opts = {
         'format': 'bestaudio/best',
         'outtmpl': output_template,
         'quiet': True,
         'no_warnings': True,
         'noplaylist': True,
-        'writethumbnail': True, # Baixa a capa da música
-        
-        # 1. BURLAR TLS FINGERPRINTING:
-        # Força o servidor Linux a usar a rede com a assinatura digital do Chrome
+        'writethumbnail': True,
         'impersonate': 'chrome',
-        
-        # 2. SISTEMA DE CLIENTES MÚLTIPLOS (Fallback):
-        # Tenta os clientes mais difíceis de bloquear primeiro (Android/iOS/TV)
         'extractor_args': {
             'youtube': {
-                'player_client': ['android', 'ios', 'tv', 'web'],
+                'player_client': ['tv_embedded', 'android', 'ios', 'tv', 'web'],
                 'player_skip': ['webpage', 'configs', 'js'],
             }
         },
-        
-        # 3. PÓS-PROCESSAMENTO VIA FFMPEG (MP3 com Capa embutida):
         'postprocessors': [
             {
                 'key': 'FFmpegExtractAudio',
@@ -89,18 +88,15 @@ def extrair_e_manipular(
         print(f"⚡ Iniciando download blindado com assinatura Chrome TLS para: {url_limpa}...")
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # Baixa e converte diretamente na AWS sem erro 403!
             info = ydl.extract_info(url_limpa, download=True)
             video_id = info.get('id')
             caminho_base = f"{pasta_tmp}/{video_id}"
             arquivo_mp3 = f"{caminho_base}.{formato}"
 
             if not os.path.exists(arquivo_mp3):
-                raise Exception("O arquivo não foi gerado após a extração.")
+                raise Exception("O ficheiro não foi gerado após o processamento do FFmpeg.")
 
-            print("🏆 SUCESSO! A barreira de IP e TLS da Amazon foi rompida!")
-            
-            # Agenda a faxina após o envio para o Telegram
+            print("🏆 SUCESSO! A barreira da AWS foi rompida com sucesso!")
             background_tasks.add_task(limpar_ficheiros_temporarios, caminho_base)
 
             return FileResponse(
@@ -113,11 +109,17 @@ def extrair_e_manipular(
         if 'caminho_base' in locals():
             limpar_ficheiros_temporarios(caminho_base)
             
+        erro_completo = traceback.format_exc()
+        print(f"❌ Falha capturada no terminal:\n{erro_completo}")
+        
+        # O USO DO REPR(E) OBRIGA O PYTHON A ESCREVER O NOME DA CLASSE DO ERRO!
         return JSONResponse(
             status_code=500,
             content={
                 "sucesso": False,
-                "erro": str(e),
-                "dica": "Se o erro persistir, verifique nos logs do Render se o pacote curl-cffi foi compilado com sucesso."
+                "nome_exato_do_erro": repr(e), 
+                "resumo_do_erro": str(e),
+                "raio_x_detalhado": erro_completo.split("\n")[-6:], 
+                "dica_tecnica": "A chave nome_exato_do_erro acima mostra a causa raiz sem ficar em branco."
             }
         )
