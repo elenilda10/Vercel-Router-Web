@@ -1,4 +1,4 @@
-# Ficheiro: app.py | Motor Próprio com Blindagem Anti-AWS e Failover Automático
+# Ficheiro: app.py | Motor Próprio com Blindagem Anti-AWS (TV Downgraded + VR)
 
 from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
 from fastapi.responses import JSONResponse, FileResponse
@@ -28,12 +28,9 @@ def limpar_ficheiros_temporarios(caminho_base: str):
 
 @app.get("/")
 def home():
-    caminho = os.path.abspath("cookies.txt")
-    has_cookie = os.path.exists(caminho)
     return {
         "status": "online",
-        "cookie_ativo": has_cookie,
-        "dica": "Na nuvem da AWS/Render, rodar SEM cookies (false) é geralmente mais rápido e seguro!",
+        "modo": "Anônimo Blindado (AWS/Render)",
         "mensagem": "API Própria de Manipulação de Áudio a correr no Render! 🚀"
     }
 
@@ -46,17 +43,15 @@ def extrair_e_manipular(
     if not url:
         raise HTTPException(status_code=400, detail="URL não fornecida.")
 
-    # 1. Limpeza rigorosa da URL para remover rastreadores do YouTube (?si=, &list=, etc)
+    # 1. Limpeza rigorosa da URL para remover parâmetros de rastreamento do YouTube
     url_limpa = url.split("?si=")[0].split("&si=")[0].split("?is=")[0].strip()
 
     pasta_tmp = "/tmp/downloads"
     os.makedirs(pasta_tmp, exist_ok=True)
     
     output_template = f"{pasta_tmp}/%(id)s.%(ext)s"
-    caminho_cookie = os.path.abspath("cookies.txt")
-    usar_cookies = os.path.exists(caminho_cookie)
 
-    # 2. Configuração Base do FFmpeg para converter e embutir a capa do álbum
+    # 2. Configuração do FFmpeg para converter e embutir a capa do álbum
     ydl_opts = {
         'format': 'bestaudio/best',
         'outtmpl': output_template,
@@ -79,16 +74,15 @@ def extrair_e_manipular(
         ],
     }
 
-    # 🛡️ TENTATIVA 1: Modo TV Embutida e Creator (Dribla o bloqueio de IP da AWS)
+    # 🛡️ A CHAVE DE PRATA PARA NUVEM AWS (RENDER):
+    # Usamos 'tv_downgraded' (TV legada), 'android_vr' (Óculos VR) e 'web_music'.
+    # Esses clientes ignoram a exigência de verificação em IPs de Data Center!
+    # Nota importante: Removemos o 'player_skip' que acionava o Erro 152.
     ydl_opts['extractor_args'] = {
         'youtube': {
-            'player_client': ['tv_embedded', 'web_creator', 'web_embedded', 'tv'],
-            'player_skip': ['webpage', 'configs', 'js'],
+            'player_client': ['tv_downgraded', 'android_vr', 'web_music', 'tv_embedded'],
         }
     }
-
-    if usar_cookies:
-        ydl_opts['cookiefile'] = caminho_cookie
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -111,20 +105,14 @@ def extrair_e_manipular(
     except Exception as e1:
         erro_str = str(e1)
         
-        # 🔄 TENTATIVA 2 (FAILOVER DE EMERGÊNCIA): 
-        # Se a Amazon rejeitar a primeira tentativa, o servidor muda instantaneamente
-        # para o modo Anônimo sem cookies usando clientes de iOS e VR!
+        # 🔄 FAILOVER DE EMERGÊNCIA (Caso a primeira lista falhe na Amazon):
         try:
-            print(f"⚠️ Tentativa 1 falhou. Ativando Failover de Emergência sem cookies...")
-            if 'cookiefile' in ydl_opts:
-                del ydl_opts['cookiefile']
-                
+            print(f"⚠️ Tentativa principal falhou. Ativando Failover iOS/Music...")
             ydl_opts['extractor_args'] = {
                 'youtube': {
-                    'player_client': ['ios', 'android_vr', 'web_music'],
+                    'player_client': ['ios', 'web_music', 'mweb'],
                 }
             }
-            
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url_limpa, download=True)
                 video_id = info.get('id')
@@ -140,7 +128,6 @@ def extrair_e_manipular(
                     )
                 else:
                     raise Exception("Falha no arquivo do Failover.")
-                    
         except Exception as e2:
             if 'caminho_base' in locals():
                 limpar_ficheiros_temporarios(caminho_base)
@@ -150,6 +137,7 @@ def extrair_e_manipular(
                 content={
                     "sucesso": False,
                     "erro_principal": erro_str,
-                    "solucao_imediata": "Vá ao seu repositório no GitHub e APAGUE ou RENAME o arquivo cookies.txt! Na nuvem da Amazon (Render), rodar de forma anônima como TV Embutida evita que o algoritmo de segurança bloqueie a sessão."
+                    "erro_secundario": str(e2),
+                    "dica": "O YouTube bloqueou temporariamente a requisição deste IP. A configuração atual está otimizada para contornar bloqueios de Data Center sem cookies."
                 }
             )
