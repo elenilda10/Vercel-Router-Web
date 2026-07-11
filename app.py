@@ -1,4 +1,4 @@
-# Ficheiro: app.py | Motor Próprio com TLS Chrome (Bug do ImpersonateTarget Corrigido!)
+# Ficheiro: app.py | Motor Próprio Blindado (TLS Chrome + Cookies Ativos + Raio-X)
 
 from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
 from fastapi.responses import JSONResponse, FileResponse
@@ -8,8 +8,8 @@ import os
 import glob
 import traceback
 
-# 🛡️ A CORREÇÃO DO ERRO ASSERTIONERROR:
-# Importamos o objeto oficial que o yt-dlp exige para fazer a camuflagem TLS!
+# 🛡️ IMPORTAÇÃO OFICIAL PARA CAMUFLAGEM TLS:
+# Evita o AssertionError transformando a string 'chrome' no objeto correto do yt-dlp
 from yt_dlp.networking.impersonate import ImpersonateTarget
 
 app = FastAPI(title="Krust Audio API - Anti-Bot Shield")
@@ -33,17 +33,22 @@ def limpar_ficheiros_temporarios(caminho_base: str):
 
 @app.get("/")
 def home():
+    # 1. Verifica se a biblioteca de camuflagem CFFI está ativa
     try:
         import curl_cffi
-        status_cffi = f"✅ Instalado perfeitamente (Versão {curl_cffi.__version__})"
+        status_cffi = f"✅ Ativo (Versão {curl_cffi.__version__})"
     except ImportError as err:
-        status_cffi = f"❌ NÃO INSTALADO. Motivo real: {repr(err)}"
+        status_cffi = f"❌ NÃO INSTALADO. Motivo: {repr(err)}"
+
+    # 2. Verifica se você enviou o ficheiro cookies.txt para o GitHub
+    caminho_cookie = os.path.abspath("cookies.txt")
+    status_cookie = "✅ DETETADO E ATIVO! (O YouTube verá uma conta autenticada)" if os.path.exists(caminho_cookie) else "⚠️ NÃO ENCONTRADO (A rodar em modo anónimo)"
 
     return {
         "status": "online",
-        "versao_deploy": "TLS BLINDADO 3.0 (Objeto ImpersonateTarget Corrigido)",
+        "versao_deploy": "BLINDAGEM MÁXIMA 4.0 (Chrome TLS + Cookies)",
         "motor_tls_cffi": status_cffi,
-        "blindagem": "TLS Fingerprinting (impersonate: chrome)",
+        "ficheiro_cookies": status_cookie,
         "plataformas_clientes": "tv_embedded, android, ios, web",
         "mensagem": "API Própria de Manipulação de Áudio a correr no Render! 🚀"
     }
@@ -63,6 +68,7 @@ def extrair_e_manipular(
     os.makedirs(pasta_tmp, exist_ok=True)
     output_template = f"{pasta_tmp}/%(id)s.%(ext)s"
 
+    # Configuração Base do Extrator
     ydl_opts = {
         'format': 'bestaudio/best',
         'outtmpl': output_template,
@@ -71,15 +77,18 @@ def extrair_e_manipular(
         'noplaylist': True,
         'writethumbnail': True,
         
-        # 🛡️ A MÁGICA: Passamos o objeto compilado que o Python exige!
+        # 🛡️ PILAR 1: Camuflagem de Navegador (Impersonate Chrome)
         'impersonate': ImpersonateTarget.from_str('chrome'),
         
+        # 🛡️ PILAR 2: Sistema de Clientes Múltiplos (Fallback inteligente)
         'extractor_args': {
             'youtube': {
                 'player_client': ['tv_embedded', 'android', 'ios', 'tv', 'web'],
                 'player_skip': ['webpage', 'configs', 'js'],
             }
         },
+        
+        # 🛡️ PILAR 3: Conversão FFmpeg para MP3 a 192kbps com Capa do Vídeo
         'postprocessors': [
             {
                 'key': 'FFmpegExtractAudio',
@@ -91,8 +100,14 @@ def extrair_e_manipular(
         ],
     }
 
+    # 🛡️ PILAR 4: INJEÇÃO AUTOMÁTICA DE COOKIES
+    # Se o ficheiro cookies.txt estiver no servidor, nós entregamos ao yt-dlp!
+    if os.path.exists("cookies.txt"):
+        ydl_opts['cookiefile'] = "cookies.txt"
+        print("🍪 Ficheiro de cookies carregado para esta requisição!")
+
     try:
-        print(f"⚡ Iniciando download blindado com assinatura Chrome TLS para: {url_limpa}...")
+        print(f"⚡ Iniciando download blindado (Chrome TLS + Cookies) para: {url_limpa}...")
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url_limpa, download=True)
@@ -103,7 +118,7 @@ def extrair_e_manipular(
             if not os.path.exists(arquivo_mp3):
                 raise Exception("O ficheiro não foi gerado após o processamento do FFmpeg.")
 
-            print("🏆 SUCESSO! A barreira da AWS foi rompida com sucesso!")
+            print("🏆 SUCESSO! Barreira de IP da Amazon rompida com sucesso via Cookies + TLS!")
             background_tasks.add_task(limpar_ficheiros_temporarios, caminho_base)
 
             return FileResponse(
@@ -119,6 +134,7 @@ def extrair_e_manipular(
         erro_completo = traceback.format_exc()
         print(f"❌ Falha capturada no terminal:\n{erro_completo}")
         
+        # O Raio-X que nos salvou no passo anterior!
         return JSONResponse(
             status_code=500,
             content={
@@ -126,6 +142,6 @@ def extrair_e_manipular(
                 "nome_exato_do_erro": repr(e), 
                 "resumo_do_erro": str(e),
                 "raio_x_detalhado": erro_completo.split("\n")[-6:], 
-                "dica_tecnica": "Verifique o erro acima no caso de falha de conexão."
+                "dica_tecnica": "Se o erro persistir mesmo com cookies, significa que essa conta secundária precisa de assistir a 1 ou 2 vídeos no navegador antes de exportar o cookie para validar a sessão."
             }
         )
