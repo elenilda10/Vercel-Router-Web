@@ -1,4 +1,4 @@
-# Ficheiro: app.py | Motor Próprio com Blindagem Anti-AWS (TV Downgraded + VR)
+# Ficheiro: app.py | Motor Próprio de Download com Evasão de Data Center (Sem Cookies)
 
 from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
 from fastapi.responses import JSONResponse, FileResponse
@@ -30,7 +30,7 @@ def limpar_ficheiros_temporarios(caminho_base: str):
 def home():
     return {
         "status": "online",
-        "modo": "Anônimo Blindado (AWS/Render)",
+        "modo": "Evasão Anônima (Otimizado para Nuvem AWS/Render)",
         "mensagem": "API Própria de Manipulação de Áudio a correr no Render! 🚀"
     }
 
@@ -43,7 +43,7 @@ def extrair_e_manipular(
     if not url:
         raise HTTPException(status_code=400, detail="URL não fornecida.")
 
-    # 1. Limpeza rigorosa da URL para remover parâmetros de rastreamento do YouTube
+    # 1. Limpeza rigorosa da URL para remover rastreadores (?si=, &list=, etc)
     url_limpa = url.split("?si=")[0].split("&si=")[0].split("?is=")[0].strip()
 
     pasta_tmp = "/tmp/downloads"
@@ -51,7 +51,7 @@ def extrair_e_manipular(
     
     output_template = f"{pasta_tmp}/%(id)s.%(ext)s"
 
-    # 2. Configuração do FFmpeg para converter e embutir a capa do álbum
+    # 2. Configuração Base do FFmpeg para converter para MP3 e embutir a capa do álbum
     ydl_opts = {
         'format': 'bestaudio/best',
         'outtmpl': output_template,
@@ -74,10 +74,9 @@ def extrair_e_manipular(
         ],
     }
 
-    # 🛡️ A CHAVE DE PRATA PARA NUVEM AWS (RENDER):
-    # Usamos 'tv_downgraded' (TV legada), 'android_vr' (Óculos VR) e 'web_music'.
-    # Esses clientes ignoram a exigência de verificação em IPs de Data Center!
-    # Nota importante: Removemos o 'player_skip' que acionava o Erro 152.
+    # 🛡️ ESTRATÉGIA DE EVASÃO PARA SERVIDORES EM NUVEM (SEM COOKIES):
+    # Usamos 'tv_downgraded', 'android_vr' e 'web_music' porque o Google
+    # não exige testes de IP de navegadores nesses clientes de TV e VR!
     ydl_opts['extractor_args'] = {
         'youtube': {
             'player_client': ['tv_downgraded', 'android_vr', 'web_music', 'tv_embedded'],
@@ -94,6 +93,7 @@ def extrair_e_manipular(
             if not os.path.exists(ficheiro_final):
                 raise Exception("O ficheiro não foi gerado após o processamento.")
 
+            # Agenda a faxina para apagar o arquivo logo após o envio
             background_tasks.add_task(limpar_ficheiros_temporarios, caminho_base)
 
             return FileResponse(
@@ -105,9 +105,9 @@ def extrair_e_manipular(
     except Exception as e1:
         erro_str = str(e1)
         
-        # 🔄 FAILOVER DE EMERGÊNCIA (Caso a primeira lista falhe na Amazon):
+        # 🔄 FAILOVER DE EMERGÊNCIA (Plano B silencioso caso a primeira lista falhe):
         try:
-            print(f"⚠️ Tentativa principal falhou. Ativando Failover iOS/Music...")
+            print("⚠️ Tentativa principal falhou. Ativando Failover iOS/Music...")
             ydl_opts['extractor_args'] = {
                 'youtube': {
                     'player_client': ['ios', 'web_music', 'mweb'],
@@ -138,6 +138,6 @@ def extrair_e_manipular(
                     "sucesso": False,
                     "erro_principal": erro_str,
                     "erro_secundario": str(e2),
-                    "dica": "O YouTube bloqueou temporariamente a requisição deste IP. A configuração atual está otimizada para contornar bloqueios de Data Center sem cookies."
+                    "dica": "O YouTube rejeitou a requisição do IP da Amazon. A configuração atual está otimizada para evasão anônima de Data Center."
                 }
             )
