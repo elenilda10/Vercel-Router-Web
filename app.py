@@ -1,17 +1,13 @@
-# Ficheiro: app.py | Motor Próprio com FFmpeg Blindado (Anti-403 + User-Agent Chrome)
+# Ficheiro: app.py | Motor Próprio com TLS Impersonation (Burlou a AWS/Render!)
 
 from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+import yt_dlp
 import os
 import glob
-import re
-import urllib.request
-import urllib.parse
-import json
-import subprocess
 
-app = FastAPI(title="Krust Audio API")
+app = FastAPI(title="Krust Audio API - Anti-Bot Shield")
 
 app.add_middleware(
     CORSMiddleware,
@@ -30,79 +26,12 @@ def limpar_ficheiros_temporarios(caminho_base: str):
     except Exception as e:
         print(f"⚠️ Erro ao limpar ficheiros temporários: {str(e)}")
 
-def extrair_id_video(url: str):
-    match = re.search(r"(?:v=|\/|youtu\.be\/)([0-9A-Za-z_-]{11})", url)
-    return match.group(1) if match else None
-
-# 🌐 MULTIMOTOR BLINDADO: Busca fluxos limpos e ignora links com trava de IP sempre que possível
-def obter_link_audio_seguro(url_youtube: str, video_id: str):
-    headers_navegador = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    }
-
-    # 1º TENTATIVA: APIs Piped (Sempre entregam links que começam com pipedproxy, imunes ao 403 da AWS)
-    apis_piped = [
-        f"https://api.piped.privacydev.net/streams/{video_id}",
-        f"https://pipedapi.kavin.rocks/streams/{video_id}",
-        f"https://piped-api.garudalinux.org/streams/{video_id}",
-        f"https://pipedapi.in.projectsegfau.lt/streams/{video_id}"
-    ]
-    for api in apis_piped:
-        try:
-            print(f"🔍 Consultando Túnel Piped: {api}...")
-            req = urllib.request.Request(api, headers=headers_navegador)
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                dados = json.loads(resp.read().decode('utf-8'))
-                if 'audioStreams' in dados and len(dados['audioStreams']) > 0:
-                    for stream in dados['audioStreams']:
-                        # Só aceitamos se o link for proxied (passar pelo servidor deles e não pelo Google)
-                        if 'googlevideo.com' not in stream['url'] or 'proxy' in stream['url']:
-                            print("✅ Link PipedProxy obtido (Imune a 403)!")
-                            titulo = dados.get('title', 'Audio Piped').replace("/", "_").replace("\\", "_")
-                            return {"url": stream['url'], "titulo": titulo, "fonte": "Piped"}
-        except:
-            continue
-
-    # 2º TENTATIVA: Invidious com Túnel Local (&local=true OBRIGA o servidor a fazer proxy)
-    espelhos_inv = ["https://inv.tux.pizza", "https://invidious.nerdvpn.de", "https://invidious.flokinet.to"]
-    for host in espelhos_inv:
-        try:
-            print(f"🔍 Consultando Túnel Invidious: {host}...")
-            req = urllib.request.Request(f"{host}/api/v1/videos/{video_id}", headers=headers_navegador)
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                dados = json.loads(resp.read().decode('utf-8'))
-                titulo = dados.get('title', 'Audio Invidious').replace("/", "_").replace("\\", "_")
-                # O local=true é o segredo para o IP do Render nunca ser verificado!
-                url_tunel = f"{host}/latest_version?id={video_id}&itag=140&local=true"
-                print("✅ Link Invidious Local obtido (Imune a 403)!")
-                return {"url": url_tunel, "titulo": titulo, "fonte": "Invidious"}
-        except:
-            continue
-
-    # 3º TENTATIVA (BACKUP): A sua API da Vercel!
-    try:
-        url_codificada = urllib.parse.quote(url_youtube, safe='')
-        url_api = f"https://go-api-six.vercel.app/youtube/stream?url={url_codificada}"
-        print(f"🔍 Consultando a sua API Vercel: {url_api}...")
-        req = urllib.request.Request(url_api, headers=headers_navegador)
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            dados = json.loads(resp.read().decode('utf-8'))
-            titulo = dados.get('title', 'Audio Vercel').replace("/", "_").replace("\\", "_")
-            if 'adaptiveFormats' in dados:
-                for fmt in dados['adaptiveFormats']:
-                    if 'audio' in fmt.get('mimeType', ''):
-                        print("✅ Link da Vercel obtido! Aplicando blindagem no FFmpeg...")
-                        return {"url": fmt['url'], "titulo": titulo, "fonte": "Vercel"}
-    except Exception as e:
-        print(f"❌ Erro na Vercel: {e}")
-
-    return None
-
 @app.get("/")
 def home():
     return {
         "status": "online",
-        "motor": "FFmpeg Nativo Blindado (Com User-Agent Chrome Anti-403)",
+        "blindagem": "TLS Fingerprinting ativado (impersonate: chrome)",
+        "plataformas_clientes": "Android, iOS, TV, Web",
         "mensagem": "API Própria de Manipulação de Áudio a correr no Render! 🚀"
     }
 
@@ -115,195 +44,70 @@ def extrair_e_manipular(
     if not url:
         raise HTTPException(status_code=400, detail="URL não fornecida.")
 
+    # Limpeza de parâmetros de rastreamento do link
     url_limpa = url.split("?si=")[0].split("&si=")[0].split("?is=")[0].strip()
-    video_id = extrair_id_video(url_limpa)
-
-    if not video_id:
-        return JSONResponse(status_code=400, content={"sucesso": False, "erro": "ID do vídeo não encontrado."})
-
-    stream_info = obter_link_audio_seguro(url_limpa, video_id)
-    
-    if not stream_info:
-        return JSONResponse(
-            status_code=500,
-            content={"sucesso": False, "erro": "Nenhum motor de extração conseguiu retornar o áudio no momento."}
-        )
 
     pasta_tmp = "/tmp/downloads"
     os.makedirs(pasta_tmp, exist_ok=True)
-    
-    caminho_base = f"{pasta_tmp}/{video_id}_{stream_info['fonte']}"
-    arquivo_mp3 = f"{caminho_base}.{formato}"
+    output_template = f"{pasta_tmp}/%(id)s.%(ext)s"
 
-    # 🛡️ O SEGREDO ANTI-403 DO FFMPEG:
-    # Adicionamos '-user_agent' e '-headers' para enganar o firewall do Google!
-    # O YouTube vai achar que é um navegador Chrome no Windows fazendo o download, e não o FFmpeg.
-    comando_ffmpeg = [
-        "ffmpeg", "-y",
-        "-user_agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "-headers", "Accept-Language: en-US,en;q=0.9\r\n",
-        "-i", stream_info['url'],
-        "-vn",
-        "-ar", "44100",
-        "-ac", "2",
-        "-b:a", "192k",
-        arquivo_mp3
-    ]
-
-    try:
-        print(f"⚡ Convertendo áudio para MP3 via FFmpeg nativo (Fonte: {stream_info['fonte']})...")
+    # 🛡️ O SETUP PERFEITO (Baseado na sua pesquisa do repositório oficial):
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'outtmpl': output_template,
+        'quiet': True,
+        'no_warnings': True,
+        'noplaylist': True,
+        'writethumbnail': True, # Baixa a capa da música
         
-        resultado = subprocess.run(comando_ffmpeg, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=45)
+        # 1. BURLAR TLS FINGERPRINTING:
+        # Força o servidor Linux a usar a rede com a assinatura digital do Chrome
+        'impersonate': 'chrome',
         
-        if resultado.returncode != 0 or not os.path.exists(arquivo_mp3):
-            erro_log = resultado.stderr.decode('utf-8', errors='ignore')[-300:]
-            raise Exception(f"Erro no processamento do FFmpeg: {erro_log}")
-
-        print("🏆 SUCESSO! Arquivo MP3 192kbps gerado com perfeição!")
-        background_tasks.add_task(limpar_ficheiros_temporarios, caminho_base)
-        
-        return FileResponse(
-            path=arquivo_mp3,
-            filename=f"{stream_info['titulo']}.{formato}",
-            media_type=f"audio/{formato}"
-        )
-
-    except Exception as e:
-        if 'caminho_base' in locals():
-            limpar_ficheiros_temporarios(caminho_base)
-            
-        return JSONResponse(
-            status_code=500,
-            content={
-                "sucesso": False,
-                "erro_ffmpeg": str(e),
-                "fonte_usada": stream_info['fonte'],
-                "dica": "O Google bloqueou o IP de streaming direto. Os túneis de proxy anônimos foram priorizados para a próxima tentativa."
+        # 2. SISTEMA DE CLIENTES MÚLTIPLOS (Fallback):
+        # Tenta os clientes mais difíceis de bloquear primeiro (Android/iOS/TV)
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'ios', 'tv', 'web'],
+                'player_skip': ['webpage', 'configs', 'js'],
             }
-        )
-# 🌐 MULTIMOTOR INTELIGENTE: Busca primeiro streams SEM trava de IP, e usa a Vercel como backup!
-def obter_link_audio_seguro(url_youtube: str, video_id: str):
-    # 1º TENTATIVA: Piped Proxy (NUNCA dá erro 403 porque passa pelo túnel deles)
-    apis_piped = [
-        f"https://api.piped.privacydev.net/streams/{video_id}",
-        f"https://pipedapi.kavin.rocks/streams/{video_id}",
-        f"https://piped-api.garudalinux.org/streams/{video_id}"
-    ]
-    for api in apis_piped:
-        try:
-            print(f"🔍 Consultando Túnel Piped: {api}...")
-            req = urllib.request.Request(api, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                dados = json.loads(resp.read().decode('utf-8'))
-                if 'audioStreams' in dados and len(dados['audioStreams']) > 0:
-                    print("✅ Link PipedProxy obtido (Imune a 403)!")
-                    titulo = dados.get('title', 'Audio Piped').replace("/", "_").replace("\\", "_")
-                    return {"url": dados['audioStreams'][0]['url'], "titulo": titulo, "fonte": "Piped"}
-        except:
-            continue
-
-    # 2º TENTATIVA: Invidious com Túnel Local (&local=true)
-    espelhos_inv = ["https://inv.tux.pizza", "https://invidious.nerdvpn.de"]
-    for host in espelhos_inv:
-        try:
-            print(f"🔍 Consultando Túnel Invidious: {host}...")
-            req = urllib.request.Request(f"{host}/api/v1/videos/{video_id}", headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req, timeout=5) as resp:
-                dados = json.loads(resp.read().decode('utf-8'))
-                titulo = dados.get('title', 'Audio Invidious').replace("/", "_").replace("\\", "_")
-                url_tunel = f"{host}/latest_version?id={video_id}&itag=140&local=true"
-                print("✅ Link Invidious Local obtido (Imune a 403)!")
-                return {"url": url_tunel, "titulo": titulo, "fonte": "Invidious"}
-        except:
-            continue
-
-    # 3º TENTATIVA (BACKUP): A sua API da Vercel!
-    try:
-        url_codificada = urllib.parse.quote(url_youtube, safe='')
-        url_api = f"https://go-api-six.vercel.app/youtube/stream?url={url_codificada}"
-        print(f"🔍 Consultando a sua API Vercel: {url_api}...")
-        req = urllib.request.Request(url_api, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            dados = json.loads(resp.read().decode('utf-8'))
-            titulo = dados.get('title', 'Audio Vercel').replace("/", "_").replace("\\", "_")
-            if 'adaptiveFormats' in dados:
-                for fmt in dados['adaptiveFormats']:
-                    if 'audio' in fmt.get('mimeType', ''):
-                        print("✅ Link da Vercel obtido com sucesso!")
-                        return {"url": fmt['url'], "titulo": titulo, "fonte": "Vercel"}
-    except Exception as e:
-        print(f"❌ Erro na Vercel: {e}")
-
-    return None
-
-@app.get("/")
-def home():
-    return {
-        "status": "online",
-        "motor": "FFmpeg Nativo + Roteamento Anti-403 (Piped/Invidious/Vercel)",
-        "mensagem": "API Própria de Manipulação de Áudio a correr no Render! 🚀"
+        },
+        
+        # 3. PÓS-PROCESSAMENTO VIA FFMPEG (MP3 com Capa embutida):
+        'postprocessors': [
+            {
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': formato,
+                'preferredquality': '192',
+            },
+            {'key': 'FFmpegMetadata'},
+            {'key': 'EmbedThumbnail'}
+        ],
     }
 
-@app.get("/api/audio")
-def extrair_e_manipular(
-    background_tasks: BackgroundTasks,
-    url: str = Query(..., description="Link do vídeo ou música do YouTube"),
-    formato: str = Query("mp3", description="Formato desejado (mp3 ou m4a)")
-):
-    if not url:
-        raise HTTPException(status_code=400, detail="URL não fornecida.")
-
-    url_limpa = url.split("?si=")[0].split("&si=")[0].split("?is=")[0].strip()
-    video_id = extrair_id_video(url_limpa)
-
-    if not video_id:
-        return JSONResponse(status_code=400, content={"sucesso": False, "erro": "ID do vídeo não encontrado."})
-
-    # 1. Pega a URL do fluxo de áudio limpa
-    stream_info = obter_link_audio_seguro(url_limpa, video_id)
-    
-    if not stream_info:
-        return JSONResponse(
-            status_code=500,
-            content={"sucesso": False, "erro": "Nenhum motor de extração conseguiu retornar o áudio no momento."}
-        )
-
-    pasta_tmp = "/tmp/downloads"
-    os.makedirs(pasta_tmp, exist_ok=True)
-    
-    caminho_base = f"{pasta_tmp}/{video_id}_{stream_info['fonte']}"
-    arquivo_mp3 = f"{caminho_base}.{formato}"
-
-    # 2. A MÁGICA: Em vez de usar o yt-dlp, chamamos o FFmpeg diretamente pelo sistema!
-    # O FFmpeg se conecta na URL do stream, baixa os bytes e converte para MP3 em 1 segundo!
-    comando_ffmpeg = [
-        "ffmpeg", "-y",             # -y sobrescreve se o arquivo já existir
-        "-i", stream_info['url'],   # -i pega o link direto do fluxo (sem achar que é página web!)
-        "-vn",                      # -vn ignora o vídeo (extrai só áudio)
-        "-ar", "44100",             # -ar define a frequência padrão de música (44.1 kHz)
-        "-ac", "2",                 # -ac define áudio estéreo
-        "-b:a", "192k",             # -b:a define a qualidade excelente do MP3 (192 kbps)
-        arquivo_mp3                 # Caminho onde o MP3 pronto será salvo no Linux
-    ]
-
     try:
-        print(f"⚡ Convertendo áudio para MP3 via FFmpeg nativo (Fonte: {stream_info['fonte']})...")
+        print(f"⚡ Iniciando download blindado com assinatura Chrome TLS para: {url_limpa}...")
         
-        # Executa o comando no terminal Linux do Render
-        resultado = subprocess.run(comando_ffmpeg, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=45)
-        
-        if resultado.returncode != 0 or not os.path.exists(arquivo_mp3):
-            erro_log = resultado.stderr.decode('utf-8', errors='ignore')[-300:]
-            raise Exception(f"Erro no processamento do FFmpeg: {erro_log}")
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            # Baixa e converte diretamente na AWS sem erro 403!
+            info = ydl.extract_info(url_limpa, download=True)
+            video_id = info.get('id')
+            caminho_base = f"{pasta_tmp}/{video_id}"
+            arquivo_mp3 = f"{caminho_base}.{formato}"
 
-        print("🏆 SUCESSO! Arquivo MP3 192kbps gerado com perfeição!")
-        background_tasks.add_task(limpar_ficheiros_temporarios, caminho_base)
-        
-        return FileResponse(
-            path=arquivo_mp3,
-            filename=f"{stream_info['titulo']}.{formato}",
-            media_type=f"audio/{formato}"
-        )
+            if not os.path.exists(arquivo_mp3):
+                raise Exception("O arquivo não foi gerado após a extração.")
+
+            print("🏆 SUCESSO! A barreira de IP e TLS da Amazon foi rompida!")
+            
+            # Agenda a faxina após o envio para o Telegram
+            background_tasks.add_task(limpar_ficheiros_temporarios, caminho_base)
+
+            return FileResponse(
+                path=arquivo_mp3,
+                filename=f"{info.get('title', 'Audio')}.{formato}",
+                media_type=f"audio/{formato}"
+            )
 
     except Exception as e:
         if 'caminho_base' in locals():
@@ -313,7 +117,7 @@ def extrair_e_manipular(
             status_code=500,
             content={
                 "sucesso": False,
-                "erro_ffmpeg": str(e),
-                "fonte_usada": stream_info['fonte']
+                "erro": str(e),
+                "dica": "Se o erro persistir, verifique nos logs do Render se o pacote curl-cffi foi compilado com sucesso."
             }
         )
