@@ -1,4 +1,4 @@
-# Ficheiro: app.py | Motor Próprio de Download e Manipulação com FFmpeg
+# Ficheiro: app.py | Motor Próprio de Download com Autenticação e Diagnóstico
 
 from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
 from fastapi.responses import JSONResponse, FileResponse
@@ -9,7 +9,6 @@ import glob
 
 app = FastAPI(title="Krust Audio API")
 
-# Permite que o Telegram ou qualquer painel aceda à API
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -17,10 +16,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 🧹 FUNÇÃO DE FAXINA: Apaga todos os ficheiros temporários após o envio
 def limpar_ficheiros_temporarios(caminho_base: str):
     try:
-        # Procura qualquer ficheiro gerado com aquele ID (.mp3, .jpg, .webm, etc.) e apaga
         ficheiros = glob.glob(f"{caminho_base}*")
         for f in ficheiros:
             if os.path.exists(f):
@@ -31,10 +28,12 @@ def limpar_ficheiros_temporarios(caminho_base: str):
 
 @app.get("/")
 def home():
-    has_cookie = os.path.exists("cookies.txt")
+    caminho = os.path.abspath("cookies.txt")
+    has_cookie = os.path.exists(caminho)
     return {
         "status": "online",
         "cookie_ativo": has_cookie,
+        "caminho_cookie": caminho if has_cookie else "Não encontrado",
         "mensagem": "API Própria de Manipulação de Áudio a correr no Render! 🚀"
     }
 
@@ -47,63 +46,71 @@ def extrair_e_manipular(
     if not url:
         raise HTTPException(status_code=400, detail="URL não fornecida.")
 
-    # Cria um diretório temporário no Linux para processar os ficheiros
+    # Limpeza preventiva de parâmetros de rastreamento na URL (que causam bloqueio)
+    url_limpa = url.split("?si=")[0].split("&si=")[0].strip()
+
     pasta_tmp = "/tmp/downloads"
     os.makedirs(pasta_tmp, exist_ok=True)
     
     output_template = f"{pasta_tmp}/%(id)s.%(ext)s"
-    caminho_cookie = "cookies.txt"
+    
+    # Busca o caminho absoluto do arquivo no servidor Linux
+    caminho_cookie = os.path.abspath("cookies.txt")
     usar_cookies = os.path.exists(caminho_cookie)
 
-    # 🛠️ CONFIGURAÇÃO DO YT-DLP COM FFMPEG:
     ydl_opts = {
         'format': 'bestaudio/best',
         'outtmpl': output_template,
         'quiet': True,
         'no_warnings': True,
         'noplaylist': True,
-        'writethumbnail': True, # Obrigatório: Baixa a imagem de capa do vídeo
-        
-        # Pós-processamento para converter e embutir metadados e imagem:
+        'writethumbnail': True,
         'postprocessors': [
             {
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': formato,
-                'preferredquality': '192', # Qualidade em kbps (192 é excelente e leve)
+                'preferredquality': '192',
             },
             {
-                'key': 'FFmpegMetadata', # Adiciona o Título, Artista e Álbum nas tags ID3
+                'key': 'FFmpegMetadata',
             },
             {
-                'key': 'EmbedThumbnail', # Embebe a foto do vídeo dentro do ficheiro MP3
+                'key': 'EmbedThumbnail',
             }
         ],
     }
 
-    # Sistema de evasão anti-bot adaptativo
+    # 🛡️ ESTRATÉGIA ANTI-BOT AVANÇADA:
     if usar_cookies:
+        # Se temos o cookie, forçamos a leitura e usamos os clientes de Web/Mobile Web
         ydl_opts['cookiefile'] = caminho_cookie
-        ydl_opts['extractor_args'] = {'youtube': {'player_client': ['web', 'mweb', 'tv']}}
+        ydl_opts['extractor_args'] = {
+            'youtube': {
+                'player_client': ['web', 'mweb', 'tv'],
+            }
+        }
     else:
-        ydl_opts['extractor_args'] = {'youtube': {'player_client': ['tv_embedded', 'mweb', 'tv']}}
+        # Sem cookie, tentamos usar os clientes de Music, iOS e VR para evitar o PO Token da AWS
+        ydl_opts['extractor_args'] = {
+            'youtube': {
+                'player_client': ['android_vr', 'web_music', 'tv_embedded', 'mweb'],
+                'player_skip': ['webpage', 'configs', 'js'],
+            }
+        }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # Faz o download real para o servidor e processa no FFmpeg
-            info = ydl.extract_info(url, download=True)
+            info = ydl.extract_info(url_limpa, download=True)
             video_id = info.get('id')
             caminho_base = f"{pasta_tmp}/{video_id}"
             
-            # O ficheiro final manipulado terá a extensão do formato escolhido
             ficheiro_final = f"{caminho_base}.{formato}"
 
             if not os.path.exists(ficheiro_final):
                 raise Exception("O ficheiro não foi gerado após o processamento do FFmpeg.")
 
-            # 💡 AGENDA A FAXINA: O ficheiro só será apagado DEPOIS de ser enviado ao utilizador!
             background_tasks.add_task(limpar_ficheiros_temporarios, caminho_base)
 
-            # Devolve o próprio ficheiro MP3 manipulado com a capa pronta!
             return FileResponse(
                 path=ficheiro_final,
                 filename=f"{info.get('title', 'Audio')}.{formato}",
@@ -111,11 +118,14 @@ def extrair_e_manipular(
             )
 
     except Exception as e:
-        # Se ocorrer um erro durante o download, limpa os restos do disco
         if 'caminho_base' in locals():
             limpar_ficheiros_temporarios(caminho_base)
             
         return JSONResponse(
             status_code=500,
-            content={"sucesso": False, "erro": f"Falha na manipulação do áudio: {str(e)}"}
+            content={
+                "sucesso": False, 
+                "cookie_detectado_no_servidor": usar_cookies,
+                "erro": f"Falha na manipulação do áudio: {str(e)}"
+            }
         )
