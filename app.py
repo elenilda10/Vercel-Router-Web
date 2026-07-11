@@ -1,4 +1,4 @@
-# Ficheiro: app.py | Motor Próprio de Download com Autenticação e Diagnóstico
+# Ficheiro: app.py | Motor Próprio com Blindagem Anti-AWS e Failover Automático
 
 from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
 from fastapi.responses import JSONResponse, FileResponse
@@ -33,7 +33,7 @@ def home():
     return {
         "status": "online",
         "cookie_ativo": has_cookie,
-        "caminho_cookie": caminho if has_cookie else "Não encontrado",
+        "dica": "Na nuvem da AWS/Render, rodar SEM cookies (false) é geralmente mais rápido e seguro!",
         "mensagem": "API Própria de Manipulação de Áudio a correr no Render! 🚀"
     }
 
@@ -46,18 +46,17 @@ def extrair_e_manipular(
     if not url:
         raise HTTPException(status_code=400, detail="URL não fornecida.")
 
-    # Limpeza preventiva de parâmetros de rastreamento na URL (que causam bloqueio)
-    url_limpa = url.split("?si=")[0].split("&si=")[0].strip()
+    # 1. Limpeza rigorosa da URL para remover rastreadores do YouTube (?si=, &list=, etc)
+    url_limpa = url.split("?si=")[0].split("&si=")[0].split("?is=")[0].strip()
 
     pasta_tmp = "/tmp/downloads"
     os.makedirs(pasta_tmp, exist_ok=True)
     
     output_template = f"{pasta_tmp}/%(id)s.%(ext)s"
-    
-    # Busca o caminho absoluto do arquivo no servidor Linux
     caminho_cookie = os.path.abspath("cookies.txt")
     usar_cookies = os.path.exists(caminho_cookie)
 
+    # 2. Configuração Base do FFmpeg para converter e embutir a capa do álbum
     ydl_opts = {
         'format': 'bestaudio/best',
         'outtmpl': output_template,
@@ -80,34 +79,26 @@ def extrair_e_manipular(
         ],
     }
 
-    # 🛡️ ESTRATÉGIA ANTI-BOT AVANÇADA:
+    # 🛡️ TENTATIVA 1: Modo TV Embutida e Creator (Dribla o bloqueio de IP da AWS)
+    ydl_opts['extractor_args'] = {
+        'youtube': {
+            'player_client': ['tv_embedded', 'web_creator', 'web_embedded', 'tv'],
+            'player_skip': ['webpage', 'configs', 'js'],
+        }
+    }
+
     if usar_cookies:
-        # Se temos o cookie, forçamos a leitura e usamos os clientes de Web/Mobile Web
         ydl_opts['cookiefile'] = caminho_cookie
-        ydl_opts['extractor_args'] = {
-            'youtube': {
-                'player_client': ['web', 'mweb', 'tv'],
-            }
-        }
-    else:
-        # Sem cookie, tentamos usar os clientes de Music, iOS e VR para evitar o PO Token da AWS
-        ydl_opts['extractor_args'] = {
-            'youtube': {
-                'player_client': ['android_vr', 'web_music', 'tv_embedded', 'mweb'],
-                'player_skip': ['webpage', 'configs', 'js'],
-            }
-        }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url_limpa, download=True)
             video_id = info.get('id')
             caminho_base = f"{pasta_tmp}/{video_id}"
-            
             ficheiro_final = f"{caminho_base}.{formato}"
 
             if not os.path.exists(ficheiro_final):
-                raise Exception("O ficheiro não foi gerado após o processamento do FFmpeg.")
+                raise Exception("O ficheiro não foi gerado após o processamento.")
 
             background_tasks.add_task(limpar_ficheiros_temporarios, caminho_base)
 
@@ -117,15 +108,48 @@ def extrair_e_manipular(
                 media_type=f"audio/{formato}"
             )
 
-    except Exception as e:
-        if 'caminho_base' in locals():
-            limpar_ficheiros_temporarios(caminho_base)
-            
-        return JSONResponse(
-            status_code=500,
-            content={
-                "sucesso": False, 
-                "cookie_detectado_no_servidor": usar_cookies,
-                "erro": f"Falha na manipulação do áudio: {str(e)}"
+    except Exception as e1:
+        erro_str = str(e1)
+        
+        # 🔄 TENTATIVA 2 (FAILOVER DE EMERGÊNCIA): 
+        # Se a Amazon rejeitar a primeira tentativa, o servidor muda instantaneamente
+        # para o modo Anônimo sem cookies usando clientes de iOS e VR!
+        try:
+            print(f"⚠️ Tentativa 1 falhou. Ativando Failover de Emergência sem cookies...")
+            if 'cookiefile' in ydl_opts:
+                del ydl_opts['cookiefile']
+                
+            ydl_opts['extractor_args'] = {
+                'youtube': {
+                    'player_client': ['ios', 'android_vr', 'web_music'],
+                }
             }
-        )
+            
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url_limpa, download=True)
+                video_id = info.get('id')
+                caminho_base = f"{pasta_tmp}/{video_id}"
+                ficheiro_final = f"{caminho_base}.{formato}"
+
+                if os.path.exists(ficheiro_final):
+                    background_tasks.add_task(limpar_ficheiros_temporarios, caminho_base)
+                    return FileResponse(
+                        path=ficheiro_final,
+                        filename=f"{info.get('title', 'Audio')}.{formato}",
+                        media_type=f"audio/{formato}"
+                    )
+                else:
+                    raise Exception("Falha no arquivo do Failover.")
+                    
+        except Exception as e2:
+            if 'caminho_base' in locals():
+                limpar_ficheiros_temporarios(caminho_base)
+                
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "sucesso": False,
+                    "erro_principal": erro_str,
+                    "solucao_imediata": "Vá ao seu repositório no GitHub e APAGUE ou RENAME o arquivo cookies.txt! Na nuvem da Amazon (Render), rodar de forma anônima como TV Embutida evita que o algoritmo de segurança bloqueie a sessão."
+                }
+            )
