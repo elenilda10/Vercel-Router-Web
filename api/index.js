@@ -1,4 +1,3 @@
-// api/index.js
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
@@ -7,11 +6,10 @@ const FormData = require('form-data');
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   
-  // Pega o token seguro das variáveis de ambiente da Vercel
+  // Lê o token diretamente das Variáveis de Ambiente da Vercel
   const token = process.env.BOT_TOKEN;
   const { url, chat_id } = req.query;
 
-  // Verifica se todos os dados necessários estão presentes
   if (!url || !chat_id) {
     return res.status(400).json({ 
       ok: false, 
@@ -22,7 +20,7 @@ module.exports = async (req, res) => {
   if (!token) {
     return res.status(500).json({ 
       ok: false, 
-      error: "A variável BOT_TOKEN não foi configurada nas configurações da Vercel!" 
+      error: "A variável BOT_TOKEN não foi configurada em Settings > Environment Variables na Vercel!" 
     });
   }
 
@@ -30,24 +28,30 @@ module.exports = async (req, res) => {
   const filePath = path.join('/tmp', fileName);
 
   try {
-    // 1. Consulta a API para pegar o stream
+    // 1. Consulta a API para extrair o link de áudio
     const apiUrl = `https://go-api-six.vercel.app/youtube/stream?url=${encodeURIComponent(url)}`;
     const apiRes = await axios.get(apiUrl, { timeout: 15000 });
 
     if (!apiRes.data || (!apiRes.data.url && (!apiRes.data.formats || apiRes.data.formats.length === 0))) {
-      return res.status(404).json({ ok: false, error: "Link de áudio não encontrado ou bloqueado." });
+      return res.status(404).json({ ok: false, error: "Link de áudio não encontrado ou bloqueado na fonte." });
     }
 
     const streamUrl = apiRes.data.url || apiRes.data.formats[0].url;
     const title = apiRes.data.title || "Áudio Extraído";
     const author = apiRes.data.author || "YouTube";
 
-    // 2. Baixa o arquivo na pasta /tmp do servidor alemão
+    // 2. Baixa o arquivo na pasta /tmp usando cabeçalhos de navegador real (Evita Erro 403)
     const responseStream = await axios({
       method: 'GET',
       url: streamUrl,
       responseType: 'stream',
-      timeout: 30000
+      timeout: 30000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': '*/*',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive'
+      }
     });
 
     const writeStream = fs.createWriteStream(filePath);
@@ -59,7 +63,7 @@ module.exports = async (req, res) => {
       responseStream.data.on('error', reject);
     });
 
-    // 3. Envia para o chat_id específico do usuário no Telegram
+    // 3. Envia o arquivo diretamente para o chat do usuário via Telegram API
     const formData = new FormData();
     formData.append('chat_id', chat_id);
     formData.append('caption', `*🎵 ${title}*\n*👤 ${author}*`, { parse_mode: 'Markdown' });
@@ -81,7 +85,7 @@ module.exports = async (req, res) => {
   } catch (error) {
     return res.status(500).json({ ok: false, error: error.message || "Erro interno no processamento" });
   } finally {
-    // 4. Limpeza imediata para não encher o servidor
+    // 4. Limpeza imediata do arquivo temporário
     if (fs.existsSync(filePath)) {
       try {
         fs.unlinkSync(filePath);
