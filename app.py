@@ -1,4 +1,4 @@
-# Ficheiro: app.py | Motor Próprio Blindado (TLS Chrome + Cookies Ativos + Deno + Raio-X)
+# Ficheiro: app.py | Motor Próprio Blindado (TLS Chrome + Cookies Ativos + Deno + Raio-X + Proxy Tor)
 
 from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
 from fastapi.responses import JSONResponse, FileResponse
@@ -8,6 +8,7 @@ import os
 import glob
 import shutil
 import traceback
+import socket
 
 # 🛡️ IMPORTAÇÃO OFICIAL PARA CAMUFLAGEM TLS:
 # Evita o AssertionError transformando a string 'chrome' no objeto correto do yt-dlp
@@ -98,12 +99,22 @@ def home():
         else "⚠️ NÃO ENCONTRADO (A rodar em modo anónimo)"
     )
 
+    # 4. Verifica se a rede Tor local está respondendo na porta 9050
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(2)
+            s.connect(("127.0.0.1", 9050))
+            status_tor = "✅ Ativo e escutando na porta 9050 (IP Mascarado!)"
+    except Exception:
+        status_tor = "❌ Inativo (Confira o Start Command no painel do Render)"
+
     return {
         "status": "online",
-        "versao_deploy": "BLINDAGEM MÁXIMA 5.0 (Chrome TLS + Cookies + Deno)",
+        "versao_deploy": "BLINDAGEM MÁXIMA 6.0 (Chrome TLS + Cookies + Deno + Tor Proxy)",
         "motor_tls_cffi": status_cffi,
         "motor_js_deno": status_deno,
         "ficheiro_cookies": status_cookie,
+        "rede_proxy_tor": status_tor,
         "plataformas_clientes": "tv_embedded, android, ios, tv, web",
         "mensagem": "API Própria de Manipulação de Áudio a correr no Render! 🚀"
     }
@@ -132,6 +143,9 @@ def extrair_e_manipular(
         'no_warnings': True,
         'noplaylist': True,
         'writethumbnail': True,
+
+        # 🌐 INJEÇÃO DO PROXY TOR (Mascarar IP de Datacenter do Render):
+        'proxy': 'socks5://127.0.0.1:9050',
 
         # 🛡️ PILAR 1: Camuflagem de Navegador (Impersonate Chrome)
         'impersonate': ImpersonateTarget.from_str('chrome'),
@@ -176,7 +190,7 @@ def extrair_e_manipular(
         print("⚠️ Deno não encontrado no servidor — extração do YouTube pode falhar ou vir degradada.")
 
     try:
-        print(f"⚡ Iniciando download blindado (Chrome TLS + Cookies + Deno) para: {url_limpa}...")
+        print(f"⚡ Iniciando download blindado (Chrome TLS + Cookies + Deno + Tor Proxy) para: {url_limpa}...")
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url_limpa, download=True)
@@ -187,7 +201,7 @@ def extrair_e_manipular(
             if not os.path.exists(arquivo_mp3):
                 raise Exception("O ficheiro não foi gerado após o processamento do FFmpeg.")
 
-            print("🏆 SUCESSO! Barreira de IP rompida com sucesso via Cookies + TLS + Deno!")
+            print("🏆 SUCESSO! Barreira de IP rompida com sucesso via Cookies + TLS + Deno + Tor!")
             background_tasks.add_task(limpar_ficheiros_temporarios, caminho_base)
 
             return FileResponse(
@@ -211,6 +225,7 @@ def extrair_e_manipular(
                 "nome_exato_do_erro": repr(e),
                 "resumo_do_erro": str(e),
                 "raio_x_detalhado": erro_completo.split("\n")[-6:],
-                "dica_tecnica": "Se o erro persistir mesmo com cookies e Deno ativos, confira em '/' se motor_js_deno e ficheiro_cookies estão mesmo ativos no servidor. Se algum estiver ausente, o problema está no deploy (Dockerfile/Secret Files), não no código."
+                "dica_tecnica": "Se o erro persistir mesmo com cookies e Deno ativos, confira em '/' se os motores (js_deno, cookies e proxy_tor) estão respondendo corretamente no servidor."
             }
         )
+
