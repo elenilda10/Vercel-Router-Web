@@ -22,16 +22,41 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Caminhos possíveis para o ficheiro de cookies: Secret File do Render (Docker)
-# ou raiz do projeto (serviço nativo / fallback local)
-CAMINHOS_COOKIES = ["/etc/secrets/cookies.txt", "cookies.txt"]
+# Caminhos possíveis para a FONTE do cookies.txt (somente-leitura):
+# Secret File do Render (Docker) ou raiz do projeto (serviço nativo / fallback local)
+CAMINHOS_COOKIES_ORIGEM = ["/etc/secrets/cookies.txt", "cookies.txt"]
+
+# O yt-dlp precisa ESCREVER no cookiefile pra atualizar tokens de sessão que o
+# YouTube rotaciona (comportamento padrão dele, não dá pra desativar). Como o
+# Secret File do Render é montado somente-leitura, mantemos uma cópia gravável
+# em /tmp e é ELA que entra no ydl_opts — nunca o arquivo original.
+CAMINHO_COOKIES_GRAVAVEL = "/tmp/cookies.txt"
 
 
-def localizar_cookies():
-    """Retorna o primeiro caminho de cookies.txt que existir no servidor, ou None."""
-    for caminho in CAMINHOS_COOKIES:
+def localizar_cookies_origem():
+    """Retorna o primeiro caminho de cookies.txt (fonte) que existir, ou None."""
+    for caminho in CAMINHOS_COOKIES_ORIGEM:
         if os.path.exists(caminho):
             return caminho
+    return None
+
+
+def preparar_cookies_gravaveis():
+    """
+    Garante uma cópia GRAVÁVEL do cookies.txt em /tmp e retorna o caminho dela.
+    Só copia da fonte se a cópia gravável ainda não existir, pra preservar os
+    tokens que o próprio yt-dlp for atualizando entre uma requisição e outra.
+    Retorna None se nenhuma fonte de cookies foi encontrada.
+    """
+    if os.path.exists(CAMINHO_COOKIES_GRAVAVEL):
+        return CAMINHO_COOKIES_GRAVAVEL
+
+    origem = localizar_cookies_origem()
+    if origem:
+        shutil.copyfile(origem, CAMINHO_COOKIES_GRAVAVEL)
+        print(f"🍪 Cookies copiados de '{origem}' para cópia gravável em '{CAMINHO_COOKIES_GRAVAVEL}'")
+        return CAMINHO_COOKIES_GRAVAVEL
+
     return None
 
 
@@ -65,10 +90,10 @@ def home():
         else "❌ NÃO ENCONTRADO (extração do YouTube fica degradada/instável)"
     )
 
-    # 3. Verifica se o ficheiro cookies.txt está disponível (Secret File ou raiz)
-    caminho_cookie = localizar_cookies()
+    # 3. Garante a cópia GRAVÁVEL do cookies.txt (copia do Secret File se necessário)
+    caminho_cookie = preparar_cookies_gravaveis()
     status_cookie = (
-        f"✅ DETETADO E ATIVO! ({caminho_cookie})"
+        f"✅ DETETADO E ATIVO! (cópia gravável em {caminho_cookie})"
         if caminho_cookie
         else "⚠️ NÃO ENCONTRADO (A rodar em modo anónimo)"
     )
@@ -134,11 +159,12 @@ def extrair_e_manipular(
     }
 
     # 🛡️ PILAR 4: INJEÇÃO AUTOMÁTICA DE COOKIES
-    # Procura em /etc/secrets/cookies.txt (Secret File do Render) e na raiz do projeto
-    caminho_cookies = localizar_cookies()
+    # Usa a cópia GRAVÁVEL em /tmp — nunca o Secret File original, que é somente
+    # leitura e quebra o yt-dlp quando ele tenta atualizar os tokens de sessão.
+    caminho_cookies = preparar_cookies_gravaveis()
     if caminho_cookies:
         ydl_opts['cookiefile'] = caminho_cookies
-        print(f"🍪 Ficheiro de cookies carregado de '{caminho_cookies}' para esta requisição!")
+        print(f"🍪 Cookiefile gravável em uso: '{caminho_cookies}'")
 
     # 🛡️ PILAR 5: RUNTIME JAVASCRIPT (DENO)
     # Exigido pelo yt-dlp desde 2025.11.12 para resolver os desafios de
