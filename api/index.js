@@ -1,58 +1,75 @@
-// api/index.js - Versao Estavel para Download no Navegador
+// api/index.js
+const fs = require('fs');
+const path = require('path');
 const axios = require('axios');
+const FormData = require('form-data');
+const { HttpsProxyAgent } = require('https-proxy-agent');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   
-  const { url } = req.query;
+  const token = process.env.BOT_TOKEN;
+  const { url, chat_id } = req.query;
 
-  if (!url) {
-    return res.status(400).json({ ok: false, error: "O parametro url e obrigatorio!" });
+  // CONFIGURAÇÃO DO PROXY (Substitua pelos dados da FineData)
+  // Exemplo: http://usuario:senha@168.119.153.216:8888
+  const proxyUrl = 'http://168.119.153.216:8888'; 
+  const agent = new HttpsProxyAgent(proxyUrl);
+
+  if (!url || !chat_id || !token) {
+    return res.status(400).json({ ok: false, error: "Parâmetros faltando!" });
   }
 
+  const fileName = `track_${Date.now()}.mp3`;
+  const filePath = path.join('/tmp', fileName);
+
   try {
-    // 1. Busca o link de audio na API externa
+    // 1. Obtém o stream via API externa
     const apiUrl = `https://go-api-six.vercel.app/youtube/stream?url=${encodeURIComponent(url)}`;
     const apiRes = await axios.get(apiUrl, { timeout: 15000 });
 
-    if (!apiRes.data || (!apiRes.data.url && (!apiRes.data.formats || apiRes.data.formats.length === 0))) {
-      return res.status(404).json({ ok: false, error: "Stream nao encontrado na fonte." });
+    if (!apiRes.data || !apiRes.data.url) {
+      throw new Error("Não foi possível obter o stream.");
     }
 
-    const streamUrl = apiRes.data.url || apiRes.data.formats[0].url;
+    const streamUrl = apiRes.data.url;
 
-    // 2. Baixamos como ARRAYBUFFER (arquivo completo) em vez de stream para evitar crash na Vercel!
-    const responseFile = await axios({
+    // 2. Download usando o Agente de Proxy (Resolve o 403 Forbidden)
+    const responseStream = await axios({
       method: 'GET',
       url: streamUrl,
-      responseType: 'arraybuffer',
-      timeout: 35000,
+      responseType: 'stream',
+      timeout: 30000,
+      httpsAgent: agent, // O MÁGICO: Força o uso do Proxy
+      httpAgent: agent,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'Referer': 'https://www.youtube.com/',
-        'Origin': 'https://www.youtube.com',
-        'Accept': '*/*'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
       }
     });
 
-    // 3. Avisamos ao navegador que e um arquivo MP3 para download
-    res.setHeader('Content-Disposition', 'attachment; filename="musica_extraida.mp3"');
-    res.setHeader('Content-Type', 'audio/mpeg');
-    res.setHeader('Content-Length', responseFile.data.length);
+    const writeStream = fs.createWriteStream(filePath);
+    responseStream.data.pipe(writeStream);
 
-    // 4. Enviamos o arquivo limpo para o seu navegador
-    return res.status(200).send(responseFile.data);
+    await new Promise((resolve, reject) => {
+      writeStream.on('finish', resolve);
+      writeStream.on('error', reject);
+      responseStream.data.on('error', reject);
+    });
+
+    // 3. Upload direto para o Telegram
+    const formData = new FormData();
+    formData.append('chat_id', chat_id);
+    formData.append('audio', fs.createReadStream(filePath), fileName);
+
+    await axios.post(`https://api.telegram.org/bot${token}/sendAudio`, formData, {
+      headers: formData.getHeaders()
+    });
+
+    return res.status(200).json({ ok: true, message: "Enviado com sucesso!" });
 
   } catch (error) {
-    let msgErro = error.message;
-    if (error.response) {
-      // Se der erro HTTP, transformamos o buffer de erro em texto legivel
-      if (Buffer.isBuffer(error.response.data)) {
-        msgErro = `Erro HTTP ${error.response.status}: ` + error.response.data.toString('utf8');
-      } else {
-        msgErro = `Erro HTTP ${error.response.status}: ` + JSON.stringify(error.response.data);
-      }
-    }
-    return res.status(500).json({ ok: false, error: msgErro });
+    return res.status(500).json({ ok: false, error: error.message });
+  } finally {
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
   }
 };
