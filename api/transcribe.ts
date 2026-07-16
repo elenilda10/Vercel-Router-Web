@@ -1,4 +1,4 @@
-/* File: api/transcribe.ts | Fixed: Ported from ElevenLabs to Groq Whisper Large V3 */
+/* File: api/transcribe.ts | Fixed: Added custom 'prompt' parameter to guide Whisper's punctuation and natural style */
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -29,6 +29,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     formData.append("file", audioBlob, "audio.ogg");
     formData.append("model", "whisper-large-v3");
     formData.append("language", "pt");
+    
+    // 💡 O TRUQUE: O prompt ensina o Whisper a pontuar, quebrar frases e aceitar expressões espontâneas como "pra", "né", "tava"
+    formData.append(
+      "prompt", 
+      "Hum, peraí, olha só. Mas enfim, vamos lá, né, pra gente ver o que aconteceu de verdade. O texto transcrito deve conter pontuação impecável, uso coerente de vírgulas, pontos finais, começos de frase em maiúsculo e expressões naturais da fala brasileira."
+    );
 
     // 3. Dispara a chamada de transcrição (ASR) para a Groq
     const response = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
