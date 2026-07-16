@@ -1,4 +1,4 @@
-/* File: api/transcribe.ts | Fixed: Native Vercel JSON response helpers to prevent empty flushes */
+/* File: api/transcribe.ts | Fixed: Ported from ElevenLabs to Groq Whisper Large V3 */
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -22,19 +22,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const arrayBuffer = await fileRes.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // 2. Prepara o formulário binário para a ElevenLabs
+    // 2. Prepara o formulário binário compatível com o padrão OpenAI usado pela Groq
     const formData = new FormData();
     const audioBlob = new Blob([buffer], { type: "audio/ogg" });
     
     formData.append("file", audioBlob, "audio.ogg");
-    formData.append("model_id", "scribe_v1");
-    formData.append("language_code", "pt");
+    formData.append("model", "whisper-large-v3");
+    formData.append("language", "pt");
 
-    // 3. Dispara a chamada de transcrição (ASR)
-    const response = await fetch("https://api.elevenlabs.io/v1/speech-to-text", {
+    // 3. Dispara a chamada de transcrição (ASR) para a Groq
+    const response = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
       method: "POST",
       headers: {
-        "xi-api-key": apiKey
+        "Authorization": `Bearer ${apiKey}`
       },
       body: formData
     });
@@ -45,12 +45,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
       try {
         const parsed = JSON.parse(errorText);
-        detailMsg = parsed.detail?.message || parsed.message || errorText;
+        detailMsg = parsed.error?.message || errorText;
       } catch (e) {}
 
       return res.status(200).json({ 
         ok: false, 
-        error: `Erro na ElevenLabs (Status ${response.status})`,
+        error: `Erro na Groq (Status ${response.status})`,
         detail: detailMsg
       });
     }
